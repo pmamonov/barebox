@@ -826,13 +826,13 @@ static int ehci_init(struct usb_host *host)
 		ehci->periodic_list = dma_alloc_coherent(1024 * 4,
 							 DMA_ADDRESS_BROKEN);
 	for (i = 0; i < 1024; i++) {
-		ehci->periodic_list[i] = cpu_to_hc32((unsigned long)periodic
+		ehci->periodic_list[i] = cpu_to_hc32((0x1fffffff & (unsigned long)periodic)
 						| QH_LINK_TYPE_QH);
 	}
 
 	/* Set periodic list base address */
 	ehci_writel(ehci, &ehci->hcor->or_periodiclistbase,
-		(unsigned long)ehci->periodic_list);
+		    0x1fffffff & ((unsigned long)ehci->periodic_list));
 
 	reg = ehci_readl(ehci, &ehci->hccr->cr_hcsparams);
 	descriptor.hub.bNbrPorts = HCS_N_PORTS(reg);
@@ -1054,11 +1054,11 @@ static struct int_queue *ehci_create_int_queue(struct usb_device *dev,
 		struct qTD *td = result->tds + i;
 		void **buf = &qh->buffer;
 
-		qh->qh_link = cpu_to_hc32((unsigned long)(qh+1) | QH_LINK_TYPE_QH);
+		qh->qh_link = cpu_to_hc32(0x1fffffff & ((unsigned long)(qh+1) | QH_LINK_TYPE_QH));
 		if (i == queuesize - 1)
 			qh->qh_link = cpu_to_hc32(QH_LINK_TERMINATE);
 
-		qh->qt_next = cpu_to_hc32((unsigned long)td);
+		qh->qt_next = cpu_to_hc32(0x1fffffff & (unsigned long)td);
 		qh->qt_altnext = cpu_to_hc32(QT_NEXT_TERMINATE);
 		qh->qh_endpt1 =
 			cpu_to_hc32((0 << 28) | /* No NAK reload (ehci 4.9) */
@@ -1087,7 +1087,7 @@ static struct int_queue *ehci_create_int_queue(struct usb_device *dev,
 			((usb_pipein(pipe) ? 1 : 0) << 8) | /* IN/OUT token */
 			0x80); /* active */
 		td->qt_buffer[0] =
-		    cpu_to_hc32((unsigned long)buffer + i * elementsize);
+		    cpu_to_hc32(0x1fffffff & ((unsigned long)buffer + i * elementsize));
 		td->qt_buffer[1] =
 		    cpu_to_hc32((td->qt_buffer[0] + 0x1000) & ~0xfff);
 		td->qt_buffer[2] =
@@ -1111,7 +1111,7 @@ static struct int_queue *ehci_create_int_queue(struct usb_device *dev,
 
 	/* hook up to periodic list */
 	result->last->qh_link = list->qh_link;
-	list->qh_link = cpu_to_hc32((unsigned long)result->first | QH_LINK_TYPE_QH);
+	list->qh_link = cpu_to_hc32((0x1fffffff & (unsigned long)result->first) | QH_LINK_TYPE_QH);
 
 	if (enable_periodic(ehci) < 0) {
 		dev_err(&dev->dev,
