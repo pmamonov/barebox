@@ -433,8 +433,9 @@ fail:
 	dev_err(ehci->dev, "fail1\n");
 	td = (void *)hc32_to_cpu(qh->qt_next);
 	while (td != (void *)QT_NEXT_TERMINATE) {
+		td = 0xa0000000 + (void *)td;
 		qh->qt_next = td->qt_next;
-		td = phys_to_virt(hc32_to_cpu(qh->qt_next));
+		td = (void *)(hc32_to_cpu(qh->qt_next));
 	}
 	return -1;
 }
