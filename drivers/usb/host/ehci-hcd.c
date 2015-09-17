@@ -114,6 +114,16 @@ static struct descriptor {
 	},
 };
 
+#define ehci_reentrance_detect(ehci) \
+	if (ehci->sem) \
+		dev_err(&dev->dev, "%s: re-entrance %d (%s:%s)\n", \
+			__func__, \
+			ehci->sem, \
+			ehci->usedby->driver->name, \
+			ehci->usedby->name); \
+	ehci->sem++; \
+	ehci->usedby = &dev->dev;
+
 #define ehci_is_TDI()	(ehci->flags & EHCI_HAS_TT)
 
 static int handshake(const struct ehci_priv *ehci,
@@ -877,12 +887,18 @@ submit_bulk_msg(struct usb_device *dev, unsigned long pipe, void *buffer,
 {
 	struct usb_host *host = dev->host;
 	struct ehci_priv *ehci = to_ehci(host);
+	int ret;
+
+	ehci_reentrance_detect(ehci);
 
 	if (usb_pipetype(pipe) != PIPE_BULK) {
 		dev_dbg(ehci->dev, "non-bulk pipe (type=%lu)", usb_pipetype(pipe));
+		ehci->sem--;
 		return -1;
 	}
-	return ehci_submit_async(dev, pipe, buffer, length, NULL);
+	ret = ehci_submit_async(dev, pipe, buffer, length, NULL);
+	ehci->sem--;
+	return ret;
 }
 
 static int
@@ -891,6 +907,9 @@ submit_control_msg(struct usb_device *dev, unsigned long pipe, void *buffer,
 {
 	struct usb_host *host = dev->host;
 	struct ehci_priv *ehci = to_ehci(host);
+	int ret;
+
+	ehci_reentrance_detect(ehci);
 
 	if (usb_pipetype(pipe) != PIPE_CONTROL) {
 		dev_dbg(ehci->dev, "non-control pipe (type=%lu)", usb_pipetype(pipe));
@@ -900,9 +919,13 @@ submit_control_msg(struct usb_device *dev, unsigned long pipe, void *buffer,
 	if (usb_pipedevice(pipe) == ehci->rootdev) {
 		if (ehci->rootdev == 0)
 			dev->speed = USB_SPEED_HIGH;
-		return ehci_submit_root(dev, pipe, buffer, length, setup);
+		ret = ehci_submit_root(dev, pipe, buffer, length, setup);
+		ehci->sem--;
+		return ret;
 	}
-	return ehci_submit_async(dev, pipe, buffer, length, setup);
+	ret = ehci_submit_async(dev, pipe, buffer, length, setup);
+	ehci->sem--;
+	return ret;
 }
 
 static int
@@ -1230,12 +1253,16 @@ submit_int_msg(struct usb_device *dev, unsigned long pipe, void *buffer,
 	void *backbuffer;
 	int result = 0, ret;
 
+	ehci_reentrance_detect(ehci);
+
 	dev_dbg(ehci->dev, "dev=%p, pipe=%lu, buffer=%p, length=%d, interval=%d",
 	      dev, pipe, buffer, length, interval);
 
 	queue = ehci_create_int_queue(dev, pipe, 1, length, buffer, interval);
-	if (!queue)
+	if (!queue) {
+		ehci->sem--;
 		return -EINVAL;
+	}
 
 	start = get_time_ns();
 	while ((backbuffer = ehci_poll_int_queue(dev, queue)) == NULL)
@@ -1251,13 +1278,17 @@ submit_int_msg(struct usb_device *dev, unsigned long pipe, void *buffer,
 		dev_err(&dev->dev,
 			"got wrong buffer back (%p instead of %p)\n",
 			backbuffer, buffer);
+		ehci->sem--;
 		return -EINVAL;
 	}
 
 	ret = ehci_destroy_int_queue(dev, queue);
-	if (ret < 0)
+	if (ret < 0) {
+		ehci->sem--;
 		return ret;
+	}
 
+	ehci->sem--;
 	return result;
 }
 

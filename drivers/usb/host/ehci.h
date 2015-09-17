@@ -98,6 +98,8 @@ struct ehci_priv {
 	int periodic_schedules;
 	struct QH *periodic_queue;
 	uint32_t *periodic_list;
+	int sem;
+	struct device_d *usedby;
 };
 
 #ifdef CONFIG_USB_EHCI_BIG_ENDIAN_MMIO
