@@ -14,16 +14,19 @@
 
 #define __version__ "4.3.0"
 
-#include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <sys/types.h>
+#include <types.h>
 #include <sys/stat.h>
-#include <sys/mman.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
 #include <errno.h>
+#include <getopt.h>
+#include <common.h>
+#include <command.h>
+#include <environment.h>
+#include <fs.h>
 
 #include "types.h"
 #include "sizes.h"
@@ -49,103 +52,50 @@ struct test tests[] = {
     { "Bit Flip", test_bitflip_comparison },
     { "Walking Ones", test_walkbits1_comparison },
     { "Walking Zeroes", test_walkbits0_comparison },
-#ifdef TEST_NARROW_WRITES    
     { "8-bit Writes", test_8bit_wide_random },
     { "16-bit Writes", test_16bit_wide_random },
-#endif
     { NULL, NULL }
 };
 
-/* Sanity checks and portability helper macros. */
-#ifdef _SC_VERSION
-void check_posix_system(void) {
-    if (sysconf(_SC_VERSION) < 198808L) {
-        fprintf(stderr, "A POSIX system is required.  Don't be surprised if "
-            "this craps out.\n");
-        fprintf(stderr, "_SC_VERSION is %lu\n", sysconf(_SC_VERSION));
-    }
-}
-#else
-#define check_posix_system()
-#endif
-
-#ifdef _SC_PAGE_SIZE
-int memtester_pagesize(void) {
-    int pagesize = sysconf(_SC_PAGE_SIZE);
-    if (pagesize == -1) {
-        perror("get page size failed");
-        exit(EXIT_FAIL_NONSTARTER);
-    }
-    printf("pagesize is %ld\n", (long) pagesize);
-    return pagesize;
-}
-#else
-int memtester_pagesize(void) {
-    printf("sysconf(_SC_PAGE_SIZE) not supported; using pagesize of 8192\n");
-    return 8192;
-}
-#endif
-
-/* Some systems don't define MAP_LOCKED.  Define it to 0 here
-   so it's just a no-op when ORed with other constants. */
-#ifndef MAP_LOCKED
-  #define MAP_LOCKED 0
-#endif
-
 /* Function declarations */
-void usage(char *me);
 
 /* Global vars - so tests have access to this information */
 int use_phys = 0;
 off_t physaddrbase = 0;
 
-/* Function definitions */
-void usage(char *me) {
-    fprintf(stderr, "\n"
-            "Usage: %s [-p physaddrbase [-d device]] <mem>[B|K|M|G] [loops]\n",
-            me);
-    exit(EXIT_FAIL_NONSTARTER);
-}
-
-int main(int argc, char **argv) {
+static int do_memtester(int argc, char **argv) {
     ul loops, loop, i;
-    size_t pagesize, wantraw, wantmb, wantbytes, wantbytes_orig, bufsize,
+    size_t wantraw, wantmb, wantbytes, wantbytes_orig, bufsize,
          halflen, count;
     char *memsuffix, *addrsuffix, *loopsuffix;
-    ptrdiff_t pagesizemask;
     void volatile *buf, *aligned;
     ulv *bufa, *bufb;
-    int do_mlock = 1, done_mem = 0;
-    int exit_code = 0;
-    int memfd, opt, memshift;
+    int exit_code = 0, ret;
+    int memfd = 0, opt, memshift;
     size_t maxbytes = -1; /* addressable memory, in bytes */
     size_t maxmb = (maxbytes >> 20) + 1; /* addressable memory, in MB */
     /* Device to mmap memory from with -p, default is normal core */
     char *device_name = "/dev/mem";
     struct stat statbuf;
     int device_specified = 0;
-    char *env_testmask = 0;
+    const char *env_testmask = 0;
     ul testmask = 0;
 
     printf("memtester version " __version__ " (%d-bit)\n", UL_LEN);
     printf("Copyright (C) 2001-2012 Charles Cazabon.\n");
     printf("Licensed under the GNU General Public License version 2 (only).\n");
     printf("\n");
-    check_posix_system();
-    pagesize = memtester_pagesize();
-    pagesizemask = (ptrdiff_t) ~(pagesize - 1);
-    printf("pagesizemask is 0x%tx\n", pagesizemask);
-    
+
     /* If MEMTESTER_TEST_MASK is set, we use its value as a mask of which
        tests we run.
      */
-    if (env_testmask = getenv("MEMTESTER_TEST_MASK")) {
+    if ((env_testmask = getenv("MEMTESTER_TEST_MASK"))) {
         errno = 0;
-        testmask = strtoul(env_testmask, 0, 0);
+        testmask = simple_strtoul(env_testmask, 0, 0);
         if (errno) {
-            fprintf(stderr, "error parsing MEMTESTER_TEST_MASK %s: %s\n", 
+            printf("error parsing MEMTESTER_TEST_MASK %s: %s\n",
                     env_testmask, strerror(errno));
-            usage(argv[0]); /* doesn't return */
+            return COMMAND_ERROR_USAGE;
         }
         printf("using testmask 0x%lx\n", testmask);
     }
@@ -154,66 +104,56 @@ int main(int argc, char **argv) {
         switch (opt) {
             case 'p':
                 errno = 0;
-                physaddrbase = (off_t) strtoull(optarg, &addrsuffix, 16);
+                physaddrbase = (off_t) simple_strtoull(optarg, &addrsuffix, 16);
                 if (errno != 0) {
-                    fprintf(stderr,
-                            "failed to parse physaddrbase arg; should be hex "
-                            "address (0x123...)\n");
-                    usage(argv[0]); /* doesn't return */
+                    printf("failed to parse physaddrbase arg; should be hex "
+                           "address (0x123...)\n");
+                    return COMMAND_ERROR_USAGE;
                 }
                 if (*addrsuffix != '\0') {
                     /* got an invalid character in the address */
-                    fprintf(stderr,
-                            "failed to parse physaddrbase arg; should be hex "
-                            "address (0x123...)\n");
-                    usage(argv[0]); /* doesn't return */
-                }
-                if (physaddrbase & (pagesize - 1)) {
-                    fprintf(stderr,
-                            "bad physaddrbase arg; does not start on page "
-                            "boundary\n");
-                    usage(argv[0]); /* doesn't return */
+                    printf("failed to parse physaddrbase arg; should be hex "
+                           "address (0x123...)\n");
+                    return COMMAND_ERROR_USAGE;
                 }
                 /* okay, got address */
                 use_phys = 1;
                 break;
             case 'd':
                 if (stat(optarg,&statbuf)) {
-                    fprintf(stderr, "can not use %s as device: %s\n", optarg, 
+                    printf("can not use %s as device: %s\n", optarg,
                             strerror(errno));
-                    usage(argv[0]); /* doesn't return */
+                    return COMMAND_ERROR_USAGE;
                 } else {
                     if (!S_ISCHR(statbuf.st_mode)) {
-                        fprintf(stderr, "can not mmap non-char device %s\n", 
+                        printf("can not mmap non-char device %s\n",
                                 optarg);
-                        usage(argv[0]); /* doesn't return */
+                        return COMMAND_ERROR_USAGE;
                     } else {
                         device_name = optarg;
                         device_specified = 1;
                     }
                 }
-                break;              
+                break;
             default: /* '?' */
-                usage(argv[0]); /* doesn't return */
+                return COMMAND_ERROR_USAGE;
         }
     }
-
     if (device_specified && !use_phys) {
-        fprintf(stderr, 
-                "for mem device, physaddrbase (-p) must be specified\n");
-        usage(argv[0]); /* doesn't return */
+        printf("for mem device, physaddrbase (-p) must be specified\n");
+        return COMMAND_ERROR_USAGE;
     }
-    
+
     if (optind >= argc) {
-        fprintf(stderr, "need memory argument, in MB\n");
-        usage(argv[0]); /* doesn't return */
+        printf("need memory argument, in MB\n");
+        return COMMAND_ERROR_USAGE;
     }
 
     errno = 0;
-    wantraw = (size_t) strtoul(argv[optind], &memsuffix, 0);
+    wantraw = (size_t) simple_strtoul(argv[optind], &memsuffix, 0);
     if (errno != 0) {
-        fprintf(stderr, "failed to parse memory argument");
-        usage(argv[0]); /* doesn't return */
+        printf("failed to parse memory argument");
+        return COMMAND_ERROR_USAGE;
     }
     switch (*memsuffix) {
         case 'G':
@@ -237,33 +177,28 @@ int main(int argc, char **argv) {
             break;
         default:
             /* bad suffix */
-            usage(argv[0]); /* doesn't return */
+            return COMMAND_ERROR_USAGE;
     }
     wantbytes_orig = wantbytes = ((size_t) wantraw << memshift);
     wantmb = (wantbytes_orig >> 20);
     optind++;
     if (wantmb > maxmb) {
-        fprintf(stderr, "This system can only address %llu MB.\n", (ull) maxmb);
-        exit(EXIT_FAIL_NONSTARTER);
-    }
-    if (wantbytes < pagesize) {
-        fprintf(stderr, "bytes %ld < pagesize %ld -- memory argument too large?\n",
-                wantbytes, pagesize);
-        exit(EXIT_FAIL_NONSTARTER);
+        printf("This system can only address %llu MB.\n", (ull) maxmb);
+        return EXIT_FAIL_NONSTARTER;
     }
 
     if (optind >= argc) {
         loops = 0;
     } else {
         errno = 0;
-        loops = strtoul(argv[optind], &loopsuffix, 0);
+        loops = simple_strtoul(argv[optind], &loopsuffix, 0);
         if (errno != 0) {
-            fprintf(stderr, "failed to parse number of loops");
-            usage(argv[0]); /* doesn't return */
+            printf("failed to parse number of loops");
+            return COMMAND_ERROR_USAGE;
         }
         if (*loopsuffix != '\0') {
-            fprintf(stderr, "loop suffix %c\n", *loopsuffix);
-            usage(argv[0]); /* doesn't return */
+            printf("loop suffix %c\n", *loopsuffix);
+            return COMMAND_ERROR_USAGE;
         }
     }
 
@@ -271,93 +206,34 @@ int main(int argc, char **argv) {
     buf = NULL;
 
     if (use_phys) {
-        memfd = open(device_name, O_RDWR | O_SYNC);
+        memfd = open(device_name, O_RDWR);
         if (memfd == -1) {
-            fprintf(stderr, "failed to open %s for physical memory: %s\n",
+            printf("failed to open %s for physical memory: %s\n",
                     device_name, strerror(errno));
-            exit(EXIT_FAIL_NONSTARTER);
+            return EXIT_FAIL_NONSTARTER;
         }
-        buf = (void volatile *) mmap(0, wantbytes, PROT_READ | PROT_WRITE,
-                                     MAP_SHARED | MAP_LOCKED, memfd,
-                                     physaddrbase);
+        buf = (void volatile *) memmap(memfd, PROT_READ | PROT_WRITE) +
+                                       physaddrbase;
         if (buf == MAP_FAILED) {
-            fprintf(stderr, "failed to mmap %s for physical memory: %s\n",
+            printf("failed to mmap %s for physical memory: %s\n",
                     device_name, strerror(errno));
-            exit(EXIT_FAIL_NONSTARTER);
-        }
-
-        if (mlock((void *) buf, wantbytes) < 0) {
-            fprintf(stderr, "failed to mlock mmap'ed space\n");
-            do_mlock = 0;
+            return EXIT_FAIL_NONSTARTER;
         }
 
         bufsize = wantbytes; /* accept no less */
-        aligned = buf;
-        done_mem = 1;
-    }
-
-    while (!done_mem) {
-        while (!buf && wantbytes) {
-            buf = (void volatile *) malloc(wantbytes);
-            if (!buf) wantbytes -= pagesize;
+    } else {
+        buf = (void volatile *) malloc(wantbytes);
+        if (!buf) {
+            printf("malloc failed\n");
+            return ENOMEM;
         }
-        bufsize = wantbytes;
-        printf("got  %lluMB (%llu bytes)", (ull) wantbytes >> 20,
-            (ull) wantbytes);
-        fflush(stdout);
-        if (do_mlock) {
-            printf(", trying mlock ...");
-            fflush(stdout);
-            if ((size_t) buf % pagesize) {
-                /* printf("aligning to page -- was 0x%tx\n", buf); */
-                aligned = (void volatile *) ((size_t) buf & pagesizemask) + pagesize;
-                /* printf("  now 0x%tx -- lost %d bytes\n", aligned,
-                 *      (size_t) aligned - (size_t) buf);
-                 */
-                bufsize -= ((size_t) aligned - (size_t) buf);
-            } else {
-                aligned = buf;
-            }
-            /* Try mlock */
-            if (mlock((void *) aligned, bufsize) < 0) {
-                switch(errno) {
-                    case EAGAIN: /* BSDs */
-                        printf("over system/pre-process limit, reducing...\n");
-                        free((void *) buf);
-                        buf = NULL;
-                        wantbytes -= pagesize;
-                        break;
-                    case ENOMEM:
-                        printf("too many pages, reducing...\n");
-                        free((void *) buf);
-                        buf = NULL;
-                        wantbytes -= pagesize;
-                        break;
-                    case EPERM:
-                        printf("insufficient permission.\n");
-                        printf("Trying again, unlocked:\n");
-                        do_mlock = 0;
-                        free((void *) buf);
-                        buf = NULL;
-                        wantbytes = wantbytes_orig;
-                        break;
-                    default:
-                        printf("failed for unknown reason.\n");
-                        do_mlock = 0;
-                        done_mem = 1;
-                }
-            } else {
-                printf("locked.\n");
-                done_mem = 1;
-            }
-        } else {
-            done_mem = 1;
-            printf("\n");
-        }
+        printf("got  %lluMB (%llu bytes)\n", (ull) wantbytes >> 20,
+               (ull) wantbytes);
     }
+    bufsize = wantbytes;
+    aligned = buf;
 
-    if (!do_mlock) fprintf(stderr, "Continuing with unlocked memory; testing "
-                           "will be slower and less reliable.\n");
+    printf("buffer @ 0x%p\n", buf);
 
     halflen = bufsize / 2;
     count = halflen / sizeof(ul);
@@ -371,9 +247,12 @@ int main(int argc, char **argv) {
         }
         printf(":\n");
         printf("  %-20s: ", "Stuck Address");
-        fflush(stdout);
-        if (!test_stuck_address(aligned, bufsize / sizeof(ul))) {
+        console_flush();
+        ret = test_stuck_address(aligned, bufsize / sizeof(ul));
+        if (!ret) {
              printf("ok\n");
+        } else if (ret == -EINTR) {
+            goto out;
         } else {
             exit_code |= EXIT_FAIL_ADDRESSLINES;
         }
@@ -386,18 +265,52 @@ int main(int argc, char **argv) {
                 continue;
             }
             printf("  %-20s: ", tests[i].name);
-            if (!tests[i].fp(bufa, bufb, count)) {
+            ret = tests[i].fp(bufa, bufb, count);
+            if (!ret) {
                 printf("ok\n");
+            } else if (ret == -EINTR) {
+                goto out;
             } else {
                 exit_code |= EXIT_FAIL_OTHERTEST;
             }
-            fflush(stdout);
+            console_flush();
         }
         printf("\n");
-        fflush(stdout);
+        console_flush();
     }
-    if (do_mlock) munlock((void *) aligned, bufsize);
+out:
+    if (use_phys)
+        close(memfd);
+    else
+        free((void *)buf);
     printf("Done.\n");
-    fflush(stdout);
-    exit(exit_code);
+    console_flush();
+    return exit_code;
 }
+
+BAREBOX_CMD_HELP_START(memtester)
+BAREBOX_CMD_HELP_TEXT("Options:")
+BAREBOX_CMD_HELP_TEXT("-p PHYSADDR")
+BAREBOX_CMD_HELP_TEXT("        tells memtester to test a specific region of memory starting at physical")
+BAREBOX_CMD_HELP_TEXT("        address PHYSADDR (given in hex), by mmaping a device specified by the -d")
+BAREBOX_CMD_HELP_TEXT("        option (below, or  /dev/mem  by  default).")
+BAREBOX_CMD_HELP_TEXT("")
+BAREBOX_CMD_HELP_TEXT("-d DEVICE")
+BAREBOX_CMD_HELP_TEXT("        a device to mmap")
+BAREBOX_CMD_HELP_TEXT("")
+BAREBOX_CMD_HELP_TEXT("MEMORY ")
+BAREBOX_CMD_HELP_TEXT("        the amount of memory to allocate and test, in megabytes by default. You")
+BAREBOX_CMD_HELP_TEXT("        can include a suffix of B, K, M, or G to indicate bytes, kilobytes, ")
+BAREBOX_CMD_HELP_TEXT("        megabytes, or gigabytes respectively.")
+BAREBOX_CMD_HELP_TEXT("")
+BAREBOX_CMD_HELP_TEXT("ITERATIONS")
+BAREBOX_CMD_HELP_TEXT("        (optional) number of loops to iterate through.  Default is infinite.")
+BAREBOX_CMD_HELP_END
+
+BAREBOX_CMD_START(memtester)
+	.cmd		= do_memtester,
+	BAREBOX_CMD_DESC("memory stress-testing")
+	BAREBOX_CMD_OPTS("[-p PHYSADDR [-d DEVICE]] <MEMORY>[B|K|M|G] [ITERATIONS]")
+	BAREBOX_CMD_GROUP(CMD_GRP_MEM)
+	BAREBOX_CMD_HELP(cmd_memtester_help)
+BAREBOX_CMD_END

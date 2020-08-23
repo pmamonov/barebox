@@ -32,8 +32,6 @@ int test_walkbits0_comparison(unsigned long volatile *bufa, unsigned long volati
 int test_walkbits1_comparison(unsigned long volatile *bufa, unsigned long volatile *bufb, size_t count);
 int test_bitspread_comparison(unsigned long volatile *bufa, unsigned long volatile *bufb, size_t count);
 int test_bitflip_comparison(unsigned long volatile *bufa, unsigned long volatile *bufb, size_t count);
-#ifdef TEST_NARROW_WRITES    
 int test_8bit_wide_random(unsigned long volatile *bufa, unsigned long volatile *bufb, size_t count);
 int test_16bit_wide_random(unsigned long volatile *bufa, unsigned long volatile *bufb, size_t count);
-#endif
 

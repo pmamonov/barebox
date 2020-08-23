@@ -13,7 +13,7 @@
  *
  */
 
-#include <sys/types.h>
+#include <types.h>
 
 /* extern declarations. */
 
