@@ -98,6 +98,36 @@ static struct binfmt_hook binfmt_elf_hook = {
 	.exec = "bootm",
 };
 
+static int do_bootm_uimage(struct image_data *data)
+{
+	unsigned long load = data->os->header.ih_load;
+	typedef void __noreturn (*kernel_entry_t)(int, ulong, ulong, ulong);
+	kernel_entry_t kernel = (kernel_entry_t)data->os->header.ih_ep;
+	int ret = 0;
+
+	pr_info("%s: load=0x%lx entry=0x%p\n", __func__, load, kernel);
+
+	ret = bootm_load_os(data, load);
+	if (ret) {
+		pr_err("OS load failed\n");
+		return ret;
+	}
+
+	shutdown_barebox();
+
+	kernel(0, 0, 0, 0);
+
+	pr_err("boot failed\n");
+	return -EINVAL;
+}
+
+static struct image_handler uimage_handler = {
+	.name = "MIPS Linux uImage",
+	.bootm = do_bootm_uimage,
+	.filetype = filetype_uimage,
+	.ih_os = IH_OS_LINUX,
+};
+
 static int mips_register_image_handler(void)
 {
 	register_image_handler(&barebox_handler);
@@ -105,6 +135,8 @@ static int mips_register_image_handler(void)
 
 	register_image_handler(&elf_handler);
 	binfmt_register(&binfmt_elf_hook);
+
+	register_image_handler(&uimage_handler);
 
 	return 0;
 }
