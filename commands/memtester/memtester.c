@@ -59,8 +59,8 @@ static struct test tests[] = {
 /* Function declarations */
 
 /* Global vars - so tests have access to this information */
-int use_phys = 0;
-off_t physaddrbase = 0;
+int use_phys;
+off_t physaddrbase;
 
 static int do_memtester(int argc, char **argv) {
     ul loops, loop, i;
@@ -78,6 +78,9 @@ static int do_memtester(int argc, char **argv) {
     struct stat statbuf;
     int device_specified = 0;
     ul testmask = 0;
+
+    use_phys = 0;
+    physaddrbase = 0;
 
     printf("memtester version " __version__ " (%d-bit)\n", UL_LEN);
     printf("Copyright (C) 2001-2012 Charles Cazabon.\n");
