@@ -77,7 +77,6 @@ static int do_memtester(int argc, char **argv) {
     char *device_name = "/dev/mem";
     struct stat statbuf;
     int device_specified = 0;
-    const char *env_testmask = 0;
     ul testmask = 0;
 
     printf("memtester version " __version__ " (%d-bit)\n", UL_LEN);
@@ -85,22 +84,18 @@ static int do_memtester(int argc, char **argv) {
     printf("Licensed under the GNU General Public License version 2 (only).\n");
     printf("\n");
 
-    /* If MEMTESTER_TEST_MASK is set, we use its value as a mask of which
-       tests we run.
-     */
-    if ((env_testmask = getenv("MEMTESTER_TEST_MASK"))) {
-        errno = 0;
-        testmask = simple_strtoul(env_testmask, 0, 0);
-        if (errno) {
-            printf("error parsing MEMTESTER_TEST_MASK %s: %s\n",
-                    env_testmask, strerror(errno));
-            return COMMAND_ERROR_USAGE;
-        }
-        printf("using testmask 0x%lx\n", testmask);
-    }
-
-    while ((opt = getopt(argc, argv, "p:d:")) != -1) {
+    while ((opt = getopt(argc, argv, "p:d:m:")) != -1) {
         switch (opt) {
+            case 'm':
+                errno = 0;
+                testmask = simple_strtoul(optarg, 0, 0);
+                if (errno) {
+                    printf("error parsing MEMTESTER_TEST_MASK %s: %s\n",
+                            optarg, strerror(errno));
+                    return COMMAND_ERROR_USAGE;
+                }
+                printf("using testmask 0x%lx\n", testmask);
+                break;
             case 'p':
                 errno = 0;
                 physaddrbase = (off_t) simple_strtoull(optarg, &addrsuffix, 16);
@@ -297,6 +292,10 @@ BAREBOX_CMD_HELP_TEXT("")
 BAREBOX_CMD_HELP_TEXT("-d DEVICE")
 BAREBOX_CMD_HELP_TEXT("        a device to mmap")
 BAREBOX_CMD_HELP_TEXT("")
+BAREBOX_CMD_HELP_TEXT("")
+BAREBOX_CMD_HELP_TEXT("-m TESTMASK")
+BAREBOX_CMD_HELP_TEXT("        bitmask to select desired tests")
+BAREBOX_CMD_HELP_TEXT("")
 BAREBOX_CMD_HELP_TEXT("MEMORY ")
 BAREBOX_CMD_HELP_TEXT("        the amount of memory to allocate and test, in megabytes by default. You")
 BAREBOX_CMD_HELP_TEXT("        can include a suffix of B, K, M, or G to indicate bytes, kilobytes, ")
@@ -309,7 +308,7 @@ BAREBOX_CMD_HELP_END
 BAREBOX_CMD_START(memtester)
 	.cmd		= do_memtester,
 	BAREBOX_CMD_DESC("memory stress-testing")
-	BAREBOX_CMD_OPTS("[-p PHYSADDR [-d DEVICE]] <MEMORY>[B|K|M|G] [ITERATIONS]")
+	BAREBOX_CMD_OPTS("[-p PHYSADDR [-d DEVICE]] [-m TESTMASK] <MEMORY>[B|K|M|G] [ITERATIONS]")
 	BAREBOX_CMD_GROUP(CMD_GRP_MEM)
 	BAREBOX_CMD_HELP(cmd_memtester_help)
 BAREBOX_CMD_END
