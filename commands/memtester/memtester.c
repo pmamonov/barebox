@@ -64,13 +64,13 @@ off_t physaddrbase = 0;
 
 static int do_memtester(int argc, char **argv) {
     ul loops, loop, i;
-    size_t wantraw, wantmb, wantbytes, wantbytes_orig, bufsize,
+    size_t wantmb, wantbytes, bufsize,
          halflen, count;
-    char *memsuffix, *addrsuffix, *loopsuffix;
+    char *addrsuffix, *loopsuffix;
     void volatile *buf, *aligned;
     ulv *bufa, *bufb;
     int exit_code = 0, ret;
-    int memfd = 0, opt, memshift;
+    int memfd = 0, opt;
     size_t maxbytes = -1; /* addressable memory, in bytes */
     size_t maxmb = (maxbytes >> 20) + 1; /* addressable memory, in MB */
     /* Device to mmap memory from with -p, default is normal core */
@@ -144,37 +144,12 @@ static int do_memtester(int argc, char **argv) {
     }
 
     errno = 0;
-    wantraw = (size_t) simple_strtoul(argv[optind], &memsuffix, 0);
+    wantbytes = (size_t) strtoull_suffix(argv[optind], 0, 0);
     if (errno != 0) {
         printf("failed to parse memory argument");
         return COMMAND_ERROR_USAGE;
     }
-    switch (*memsuffix) {
-        case 'G':
-        case 'g':
-            memshift = 30; /* gigabytes */
-            break;
-        case 'M':
-        case 'm':
-            memshift = 20; /* megabytes */
-            break;
-        case 'K':
-        case 'k':
-            memshift = 10; /* kilobytes */
-            break;
-        case 'B':
-        case 'b':
-            memshift = 0; /* bytes*/
-            break;
-        case '\0':  /* no suffix */
-            memshift = 20; /* megabytes */
-            break;
-        default:
-            /* bad suffix */
-            return COMMAND_ERROR_USAGE;
-    }
-    wantbytes_orig = wantbytes = ((size_t) wantraw << memshift);
-    wantmb = (wantbytes_orig >> 20);
+    wantmb = (wantbytes >> 20);
     optind++;
     if (wantmb > maxmb) {
         printf("This system can only address %llu MB.\n", (ull) maxmb);
@@ -297,8 +272,8 @@ BAREBOX_CMD_HELP_TEXT("-m TESTMASK")
 BAREBOX_CMD_HELP_TEXT("        bitmask to select desired tests")
 BAREBOX_CMD_HELP_TEXT("")
 BAREBOX_CMD_HELP_TEXT("MEMORY ")
-BAREBOX_CMD_HELP_TEXT("        the amount of memory to allocate and test, in megabytes by default. You")
-BAREBOX_CMD_HELP_TEXT("        can include a suffix of B, K, M, or G to indicate bytes, kilobytes, ")
+BAREBOX_CMD_HELP_TEXT("        the amount of memory to allocate and test in bytes. You")
+BAREBOX_CMD_HELP_TEXT("        can include a suffix of K, M, or G to indicate kilobytes, ")
 BAREBOX_CMD_HELP_TEXT("        megabytes, or gigabytes respectively.")
 BAREBOX_CMD_HELP_TEXT("")
 BAREBOX_CMD_HELP_TEXT("ITERATIONS")
@@ -308,7 +283,7 @@ BAREBOX_CMD_HELP_END
 BAREBOX_CMD_START(memtester)
 	.cmd		= do_memtester,
 	BAREBOX_CMD_DESC("memory stress-testing")
-	BAREBOX_CMD_OPTS("[-p PHYSADDR [-d DEVICE]] [-m TESTMASK] <MEMORY>[B|K|M|G] [ITERATIONS]")
+	BAREBOX_CMD_OPTS("[-p PHYSADDR [-d DEVICE]] [-m TESTMASK] <MEMORY>[k|M|G] [ITERATIONS]")
 	BAREBOX_CMD_GROUP(CMD_GRP_MEM)
 	BAREBOX_CMD_HELP(cmd_memtester_help)
 BAREBOX_CMD_END
