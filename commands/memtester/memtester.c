@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * memtester version 4
  *
@@ -7,8 +8,6 @@
  * Version 3 not publicly released.
  * Version 4 rewrite:
  * Copyright (C) 2004-2012 Charles Cazabon <charlesc-memtester@pyropus.ca>
- * Licensed under the terms of the GNU General Public License version 2 (only).
- * See the file COPYING for details.
  *
  */
 
