@@ -31,7 +31,7 @@
 #include "sizes.h"
 #include "tests.h"
 
-#define EXIT_FAIL_NONSTARTER    0x01
+#define EXIT_FAIL_NONSTARTER    COMMAND_ERROR
 #define EXIT_FAIL_ADDRESSLINES  0x02
 #define EXIT_FAIL_OTHERTEST     0x04
 
@@ -254,7 +254,10 @@ out:
         free((void *)buf);
     printf("Done.\n");
     console_flush();
-    return exit_code;
+    if (!exit_code)
+        return 0;
+    printf("%s FAILED: 0x%x\n", argv[0], exit_code);
+    return COMMAND_ERROR;
 }
 
 BAREBOX_CMD_HELP_START(memtester)
