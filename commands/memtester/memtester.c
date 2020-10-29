@@ -189,6 +189,7 @@ static int do_memtester(int argc, char **argv) {
         if (buf == MAP_FAILED) {
             printf("failed to mmap %s for physical memory: %s\n",
                     device_name, strerror(errno));
+            close(memfd);
             return EXIT_FAIL_NONSTARTER;
         }
 
