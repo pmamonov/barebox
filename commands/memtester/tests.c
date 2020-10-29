@@ -45,8 +45,8 @@ static int compare_regions(ulv *bufa, ulv *bufb, size_t count) {
 
     for (i = 0; i < count; i++, p1++, p2++) {
         if (*p1 != *p2) {
-            if (use_phys) {
-                physaddr = physaddrbase + (i * sizeof(ul));
+            if (memtester_use_phys) {
+                physaddr = memtester_physaddrbase + (i * sizeof(ul));
                 printf("FAILURE: 0x%08lx != 0x%08lx at physical address "
                        "0x%08lx.\n", 
                        (ul) *p1, (ul) *p2, physaddr);
@@ -86,8 +86,8 @@ int test_stuck_address(ulv *bufa, size_t count) {
         p1 = (ulv *) bufa;
         for (i = 0; i < count; i++, p1++) {
             if (*p1 != (((j + i) % 2) == 0 ? (ul) p1 : ~((ul) p1))) {
-                if (use_phys) {
-                    physaddr = physaddrbase + (i * sizeof(ul));
+                if (memtester_use_phys) {
+                    physaddr = memtester_physaddrbase + (i * sizeof(ul));
                     printf("FAILURE: possible bad address line at physical "
                            "address 0x%08lx.\n", 
                            physaddr);

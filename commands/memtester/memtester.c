@@ -59,8 +59,8 @@ static struct test tests[] = {
 /* Function declarations */
 
 /* Global vars - so tests have access to this information */
-int use_phys;
-off_t physaddrbase;
+int memtester_use_phys;
+off_t memtester_physaddrbase;
 
 static int do_memtester(int argc, char **argv) {
     ul loops, loop, i;
@@ -79,8 +79,8 @@ static int do_memtester(int argc, char **argv) {
     int device_specified = 0;
     ul testmask = 0;
 
-    use_phys = 0;
-    physaddrbase = 0;
+    memtester_use_phys = 0;
+    memtester_physaddrbase = 0;
 
     printf("memtester version " __version__ " (%d-bit)\n", UL_LEN);
     printf("Copyright (C) 2001-2012 Charles Cazabon.\n");
@@ -101,7 +101,8 @@ static int do_memtester(int argc, char **argv) {
                 break;
             case 'p':
                 errno = 0;
-                physaddrbase = (off_t) simple_strtoull(optarg, &addrsuffix, 16);
+                memtester_physaddrbase =
+			(off_t)simple_strtoull(optarg, &addrsuffix, 16);
                 if (errno != 0) {
                     printf("failed to parse physaddrbase arg; should be hex "
                            "address (0x123...)\n");
@@ -114,7 +115,7 @@ static int do_memtester(int argc, char **argv) {
                     return COMMAND_ERROR_USAGE;
                 }
                 /* okay, got address */
-                use_phys = 1;
+                memtester_use_phys = 1;
                 break;
             case 'd':
                 if (stat(optarg,&statbuf)) {
@@ -136,7 +137,7 @@ static int do_memtester(int argc, char **argv) {
                 return COMMAND_ERROR_USAGE;
         }
     }
-    if (device_specified && !use_phys) {
+    if (device_specified && !memtester_use_phys) {
         printf("for mem device, physaddrbase (-p) must be specified\n");
         return COMMAND_ERROR_USAGE;
     }
@@ -177,7 +178,7 @@ static int do_memtester(int argc, char **argv) {
     printf("want %lluMB (%llu bytes)\n", (ull) wantmb, (ull) wantbytes);
     buf = NULL;
 
-    if (use_phys) {
+    if (memtester_use_phys) {
         memfd = open(device_name, O_RDWR);
         if (memfd == -1) {
             printf("failed to open %s for physical memory: %s\n",
@@ -185,7 +186,7 @@ static int do_memtester(int argc, char **argv) {
             return EXIT_FAIL_NONSTARTER;
         }
         buf = (void volatile *) memmap(memfd, PROT_READ | PROT_WRITE) +
-                                       physaddrbase;
+                                       memtester_physaddrbase;
         if (buf == MAP_FAILED) {
             printf("failed to mmap %s for physical memory: %s\n",
                     device_name, strerror(errno));
@@ -251,7 +252,7 @@ static int do_memtester(int argc, char **argv) {
         console_flush();
     }
 out:
-    if (use_phys)
+    if (memtester_use_phys)
         close(memfd);
     else
         free((void *)buf);

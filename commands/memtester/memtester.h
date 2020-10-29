@@ -16,6 +16,6 @@
 
 /* extern declarations. */
 
-extern int use_phys;
-extern off_t physaddrbase;
+extern int memtester_use_phys;
+extern off_t memtester_physaddrbase;
 
