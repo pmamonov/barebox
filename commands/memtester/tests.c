@@ -23,13 +23,13 @@
 #include "memtester.h"
 #include "tests.h"
 
-char progress[] = "-\\|/";
+static char progress[] = "-\\|/";
 #define PROGRESSLEN 4
 #define PROGRESSOFTEN 2500
 #define ONE 0x00000001L
 
-mword8_t  mword8;
-mword16_t mword16;
+static mword8_t  mword8;
+static mword16_t mword16;
 
 /* Function definitions. */
 
