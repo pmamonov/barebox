@@ -67,7 +67,7 @@ static int do_memtester(int argc, char **argv) {
     size_t wantmb, wantbytes, bufsize,
          halflen, count;
     char *addrsuffix, *loopsuffix;
-    void volatile *buf, *aligned;
+    void *buf, *aligned;
     ulv *bufa, *bufb;
     int exit_code = 0, ret;
     int memfd = 0, opt;
@@ -185,8 +185,7 @@ static int do_memtester(int argc, char **argv) {
                     device_name, strerror(errno));
             return EXIT_FAIL_NONSTARTER;
         }
-        buf = (void volatile *) memmap(memfd, PROT_READ | PROT_WRITE) +
-                                       memtester_physaddrbase;
+        buf = memmap(memfd, PROT_READ | PROT_WRITE) + memtester_physaddrbase;
         if (buf == MAP_FAILED) {
             printf("failed to mmap %s for physical memory: %s\n",
                     device_name, strerror(errno));
@@ -195,7 +194,7 @@ static int do_memtester(int argc, char **argv) {
 
         bufsize = wantbytes; /* accept no less */
     } else {
-        buf = (void volatile *) malloc(wantbytes);
+        buf = malloc(wantbytes);
         if (!buf) {
             printf("malloc failed\n");
             return ENOMEM;
