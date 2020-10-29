@@ -13,7 +13,7 @@
 
 #include <linux/limits.h>
 
-#define rand32() ((unsigned int) rand() | ( (unsigned int) rand() << 16))
+#define rand32() random32()
 
 #if defined(CONFIG_32BIT)
     #define rand_ul() rand32()
