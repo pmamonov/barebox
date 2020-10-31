@@ -3,6 +3,13 @@
 / {
 	model = "Linkit Smart 7688";
 
+	chosen {
+		environment {
+			compatible = "barebox,environment";
+			device-path = &spiflash, "partname:u-boot-env";
+		};
+	};
+
 	memory@0 {
 		device_type = "memory";
 		reg = <0x00000000 0x08000000>;
