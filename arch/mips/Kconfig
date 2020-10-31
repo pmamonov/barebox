@@ -34,6 +34,12 @@ config ARCH_TEXT_BASE
 	hex
 	default 0xa0800000
 
+config ROM_TEXT_BASE
+	hex "ROM base address"
+	default 0
+	help
+	  The address to link PBL at.
+
 menu "Machine selection"
 
 config MIPS_RELOCATION_TABLE_SIZE
