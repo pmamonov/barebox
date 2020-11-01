@@ -66,7 +66,6 @@ static int do_memtester(int argc, char **argv) {
     ul loops, loop, i;
     size_t wantmb, wantbytes, bufsize,
          halflen, count;
-    char *addrsuffix, *loopsuffix;
     void *buf, *aligned;
     ulv *bufa, *bufb;
     int exit_code = 0, ret;
@@ -88,11 +87,11 @@ static int do_memtester(int argc, char **argv) {
     printf("\n");
 
     while ((opt = getopt(argc, argv, "p:d:m:")) != -1) {
+        ull t;
+
         switch (opt) {
             case 'm':
-                errno = 0;
-                testmask = simple_strtoul(optarg, 0, 0);
-                if (errno) {
+                if (kstrtoul(optarg, 0, &testmask)) {
                     printf("error parsing MEMTESTER_TEST_MASK %s: %s\n",
                             optarg, strerror(errno));
                     return COMMAND_ERROR_USAGE;
@@ -100,21 +99,12 @@ static int do_memtester(int argc, char **argv) {
                 printf("using testmask 0x%lx\n", testmask);
                 break;
             case 'p':
-                errno = 0;
-                memtester_physaddrbase =
-			(off_t)simple_strtoull(optarg, &addrsuffix, 16);
-                if (errno != 0) {
+                if (kstrtoull(optarg, 0, &t)) {
                     printf("failed to parse physaddrbase arg; should be hex "
                            "address (0x123...)\n");
                     return COMMAND_ERROR_USAGE;
                 }
-                if (*addrsuffix != '\0') {
-                    /* got an invalid character in the address */
-                    printf("failed to parse physaddrbase arg; should be hex "
-                           "address (0x123...)\n");
-                    return COMMAND_ERROR_USAGE;
-                }
-                /* okay, got address */
+                memtester_physaddrbase = (off_t)t;
                 memtester_use_phys = 1;
                 break;
             case 'd':
@@ -147,10 +137,9 @@ static int do_memtester(int argc, char **argv) {
         return COMMAND_ERROR_USAGE;
     }
 
-    errno = 0;
     wantbytes = (size_t) strtoull_suffix(argv[optind], 0, 0);
-    if (errno != 0) {
-        printf("failed to parse memory argument");
+    if (wantbytes < 2 * sizeof(ul)) {
+        printf("need at least %ldB of memory to test\n", 2 * sizeof(ul));
         return COMMAND_ERROR_USAGE;
     }
     wantmb = (wantbytes >> 20);
@@ -163,14 +152,8 @@ static int do_memtester(int argc, char **argv) {
     if (optind >= argc) {
         loops = 0;
     } else {
-        errno = 0;
-        loops = simple_strtoul(argv[optind], &loopsuffix, 0);
-        if (errno != 0) {
+        if (kstrtoul(argv[optind], 0, &loops)) {
             printf("failed to parse number of loops");
-            return COMMAND_ERROR_USAGE;
-        }
-        if (*loopsuffix != '\0') {
-            printf("loop suffix %c\n", *loopsuffix);
             return COMMAND_ERROR_USAGE;
         }
     }
