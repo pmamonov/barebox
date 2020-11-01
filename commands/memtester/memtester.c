@@ -203,7 +203,6 @@ static int do_memtester(int argc, char **argv) {
         }
         printf(":\n");
         printf("  %-20s: ", "Stuck Address");
-        console_flush();
         ret = test_stuck_address(aligned, bufsize / sizeof(ul));
         if (!ret) {
              printf("ok\n");
@@ -229,10 +228,8 @@ static int do_memtester(int argc, char **argv) {
             } else {
                 exit_code |= EXIT_FAIL_OTHERTEST;
             }
-            console_flush();
         }
         printf("\n");
-        console_flush();
     }
 out:
     if (memtester_use_phys)
@@ -240,7 +237,6 @@ out:
     else
         free((void *)buf);
     printf("Done.\n");
-    console_flush();
     if (!exit_code)
         return 0;
     printf("%s FAILED: 0x%x\n", argv[0], exit_code);
